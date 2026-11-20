@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Закрытая страница</title>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--ink:#1d1d1f;--muted:#5d5d63;--line:#e3e1dc;--accent:#e85d04;--bad:#c0392b}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141416;--card:#1e1e21;--ink:#ececef;--muted:#a3a3ab;--line:#2f2f34;--accent:#ff7b2e;--bad:#ff6b5b}}
+:root[data-theme="dark"]{--bg:#141416;--card:#1e1e21;--ink:#ececef;--muted:#a3a3ab;--line:#2f2f34;--accent:#ff7b2e;--bad:#ff6b5b}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px}
+form{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px;width:100%;max-width:380px}
+h1{font-size:20px;margin:0 0 6px}
+p{color:var(--muted);margin:0 0 16px;font-size:14px}
+input{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:16px}
+button{margin-top:12px;width:100%;padding:11px;border:0;border-radius:10px;background:var(--accent);color:#fff;font-size:16px;font-weight:600;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}
+#err{color:var(--bad);font-size:14px;min-height:20px;margin-top:10px}
+</style>
+</head>
+<body>
+<form id="f" autocomplete="off">
+  <h1>Закрытая страница</h1>
+  <p>Содержимое зашифровано. Введите пароль, полученный от координатора.</p>
+  <input id="pw" type="password" placeholder="Пароль" autofocus>
+  <button id="b" type="submit">Открыть</button>
+  <div id="err"></div>
+</form>
+<script>
+const d64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+let payload = null;
+async function getPayload(){ if(!payload){ const r = await fetch('payload.txt',{cache:'no-store'}); payload = await r.json(); } return payload; }
+async function unlock(pw){
+  const p = await getPayload();
+  const enc = new TextEncoder();
+  const base = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({name:'PBKDF2', salt:d64(p.salt), iterations:p.iter, hash:'SHA-256'}, base, {name:'AES-GCM', length:256}, false, ['decrypt']);
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv:d64(p.iv)}, key, d64(p.ct));
+  return new TextDecoder().decode(pt);
+}
+async function go(pw, silent){
+  const b = document.getElementById('b'), err = document.getElementById('err');
+  b.disabled = true; err.textContent = silent ? '' : 'Расшифровка…';
+  try{
+    const html = await unlock(pw);
+    try{ sessionStorage.setItem('k', pw); }catch(e){}
+    document.open(); document.write(html); document.close();
+  }catch(e){
+    try{ sessionStorage.removeItem('k'); }catch(_){}
+    err.textContent = silent ? '' : 'Неверный пароль или ошибка загрузки.';
+    b.disabled = false;
+  }
+}
+document.getElementById('f').addEventListener('submit', e => { e.preventDefault(); go(document.getElementById('pw').value); });
+try{ const k = sessionStorage.getItem('k'); if(k) go(k, true); }catch(e){}
+</script>
+</body>
+</html>
